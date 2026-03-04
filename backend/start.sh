@@ -10,7 +10,8 @@ fluxbox &
 sleep 1
 
 # Khoi dong x11vnc (VNC server)
-x11vnc -display :99 -nopw -forever -shared -rfbport 5900 &
+# Chay trong vong lap de tu restart neu tool bi crash khi user reload/disconnect noVNC
+(while true; do x11vnc -display :99 -nopw -forever -shared -rfbport 5900; sleep 1; done) &
 sleep 1
 
 # Khoi dong noVNC (web-based VNC viewer)
