@@ -21,52 +21,50 @@ function normalize(text) {
  */
 function calculateMatchScore(post, room) {
   let score = 0;
-  const analysis = post.analysis || {};
 
-  // 1. Location matching (max 50 diem)
-  if (analysis.location && room.locationKeywords?.length > 0) {
-    const postLocation = normalize(analysis.location);
-    for (const keyword of room.locationKeywords) {
-      const kw = normalize(keyword);
-      if (postLocation.includes(kw) || kw.includes(postLocation)) {
-        score += 50;
-        break;
-      }
-    }
-    // Partial match: kiem tra tung tu
-    if (score === 0) {
-      const postWords = postLocation.split(/\s+/);
-      for (const keyword of room.locationKeywords) {
-        const kw = normalize(keyword);
-        for (const word of postWords) {
-          if (word.length > 2 && kw.includes(word)) {
-            score += 25;
-            break;
-          }
-        }
-        if (score > 0) break;
-      }
+  if (!post.content) return 0;
+
+  const postContent = normalize(post.content);
+
+  // Tao danh sach cum tu de so khop tu room content, title, location
+  const roomTexts = [room.content, room.title, room.location].filter(Boolean);
+  const allKeywords = new Set();
+
+  for (const text of roomTexts) {
+    // Them nguyen chuoi
+    const normalized = normalize(text);
+    if (normalized.length > 2) allKeywords.add(normalized);
+    // Tach thanh cac cum tu co nghia (> 2 ky tu)
+    const words = normalized.split(/[,\s]+/).filter((w) => w.length > 2);
+    words.forEach((w) => allKeywords.add(w));
+  }
+
+  if (allKeywords.size === 0) return 0;
+
+  // Dem so keywords match
+  let matchCount = 0;
+  let hasFullMatch = false;
+
+  for (const kw of allKeywords) {
+    if (postContent.includes(kw)) {
+      matchCount++;
+      // Full match (cum tu dai > 5 ky tu) co trong gia tri cao hon
+      if (kw.length > 5) hasFullMatch = true;
     }
   }
 
-  // 2. Budget matching (max 30 diem)
-  if (analysis.budget && room.price > 0) {
-    const budgetNum = parseBudget(analysis.budget);
-    if (budgetNum > 0) {
-      const ratio = room.price / budgetNum;
-      if (ratio >= 0.5 && ratio <= 1.5) {
-        // Gia room nam trong khoang +/-50% budget
-        score += 30;
-      } else if (ratio >= 0.3 && ratio <= 2.0) {
-        // Gan match
-        score += 15;
-      }
-    }
-  }
+  if (matchCount === 0) return 0;
 
-  // 3. Confidence bonus (max 20 diem)
-  if (analysis.confidence) {
-    score += Math.round(analysis.confidence * 20);
+  // Tinh diem
+  // Full match cum tu dai: 50 diem
+  if (hasFullMatch) score += 50;
+  // Moi keyword match them: 10 diem
+  score += matchCount * 10;
+
+  // Confidence bonus tu AI (max 20 diem)
+  const confidence = post.analysis?.confidence || 0;
+  if (confidence > 0) {
+    score += Math.round(confidence * 20);
   }
 
   return Math.min(100, score);
