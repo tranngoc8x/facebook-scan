@@ -44,6 +44,21 @@ async function scanGroup(group, options = {}) {
     const rawPosts = await extractPosts(page, maxPosts);
     console.log(`[Scanner] Found ${rawPosts.length} posts in ${group.name}`);
 
+    if (rawPosts.length === 0) {
+      const fs = require("fs");
+      try {
+        const html = await page.content();
+        fs.writeFileSync("/tmp/fb_debug_0_posts.html", html);
+        await page.screenshot({
+          path: "/tmp/fb_debug_0_posts.png",
+          fullPage: true,
+        });
+        console.log(`[Scanner] Dumped HTML and Screenshot to /tmp/`);
+      } catch (e) {
+        console.error("Failed to dump HTML/Screenshot:", e);
+      }
+    }
+
     // Load ten cac tai khoan Facebook cua minh de loc ra
     const myAccounts = await FacebookAccount.find({}, { name: 1, email: 1 });
     const myNames = myAccounts
@@ -54,6 +69,9 @@ async function scanGroup(group, options = {}) {
 
     // Luu posts moi vao DB
     for (const raw of rawPosts) {
+      if (raw.authorName === "Trần Ngọc Thắng") {
+        console.log(`[Scanner] ID: ${raw.fbPostId}, URL: ${raw.postUrl}`);
+      }
       try {
         // Skip bai viet khong co author
         if (!raw.authorName || raw.authorName.trim().length === 0) {
@@ -125,7 +143,7 @@ async function scanGroup(group, options = {}) {
  * Su dung feed children thay vi div[role="article"] vi Facebook da thay doi DOM
  */
 async function extractPosts(page, maxPosts) {
-  const posts = await page.evaluate((limit) => {
+  const posts = await page.evaluate(async (limit) => {
     const results = [];
 
     // Strategy 1: Tim div[role="article"] (cach cu)
@@ -149,25 +167,81 @@ async function extractPosts(page, maxPosts) {
         // Tim tat ca cac link trong post
         const allLinks = post.querySelectorAll("a[href]");
 
-        // Lay post ID tu link
+        // Lay post ID tu link hoac HTML content
         let fbPostId = "";
         let postUrl = "";
-        for (const link of allLinks) {
-          const href = link.getAttribute("href") || "";
-          // Tim permalink patterns
-          const postMatch = href.match(
-            /\/posts\/(\w+)|permalink\/(\d+)|story_fbid=(\d+)/,
+        let debugLinks = [];
+        const linkElements = post.querySelectorAll('a, [role="link"]');
+        for (const el of linkElements) {
+          try {
+            el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+            el.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+          } catch (e) {}
+          debugLinks.push(
+            (
+              el.tagName +
+              "|" +
+              (el.getAttribute("href") || "nohref") +
+              "|" +
+              (el.textContent?.substring(0, 20) || "notext")
+            ).replace(/\s+/g, " "),
           );
-          if (postMatch) {
-            fbPostId = postMatch[1] || postMatch[2] || postMatch[3];
-            postUrl = href.startsWith("http")
-              ? href
-              : "https://www.facebook.com" + href;
-            break;
+        }
+
+        // Wait a tiny bit for React to process the hover (simulate async)
+        await new Promise((r) => setTimeout(r, 10));
+
+        const html = post.innerHTML;
+
+        // Log giup debug tat ca cac chuoi co the la ID (fbid, pfbid, day so dai tren 10 ky tu ma nam gan cac keyword)
+        const possibleIds = [
+          ...html.matchAll(
+            /(?:post_id|story_fbid|top_level_post_id|target_id|feedback_target_id|fbid|pfbid\w+|"id":"[1-9]\d{10,}")/g,
+          ),
+        ];
+
+        // Thu pattern URL neu co the (luc nay groups/ user/ is broken)
+        const permalinkRegexes = [
+          /pfbid[a-zA-Z0-9]{20,}/g, // Facebook's new pfbid format
+          /"top_level_post_id"\s*:\s*"(\d+)"/g,
+          /"post_id"\s*:\s*"(\d+)"/g,
+          /"story_fbid"\s*:\s*"(\d+)"/g,
+          /groupID=\d+&postID=(\d+)/g,
+          /groups[/%2F]+[^/%2F]+[/%2F]+(?:posts|permalink)[/%2F]+(\d+)/g,
+        ];
+
+        for (const regex of permalinkRegexes) {
+          const matches = [...html.matchAll(regex)];
+          for (const m of matches) {
+            const id = m[1] || m[0];
+            if (id && id.length > 5 && id !== "0") {
+              fbPostId = id;
+              const groupIdMatch = html.match(/group_id[=:]\s*["']?(\d+)/);
+              const groupId = groupIdMatch ? groupIdMatch[1] : "0";
+              postUrl = `https://www.facebook.com/groups/${groupId}/posts/${fbPostId}`;
+
+              if (fbPostId.startsWith("pfbid")) {
+                postUrl = `https://www.facebook.com/${fbPostId}`;
+              }
+              break;
+            }
           }
+          if (fbPostId) break;
+        }
+
+        if (fbPostId === "") {
+          console.log(
+            "No fbPostId found for post by " +
+              authorName +
+              " - Possible ID snippets: ",
+            html
+              .match(/.{0,20}(pfbid[a-zA-Z0-9]+|\d{15,}).{0,20}/g)
+              ?.slice(0, 10),
+          );
         }
 
         if (!fbPostId) {
+          // Khong tim thay pattern chuan
           // Generate ID tu noi dung
           const text =
             post.textContent?.substring(0, 100) || Math.random().toString();
@@ -220,6 +294,8 @@ async function extractPosts(page, maxPosts) {
             content: content.substring(0, 2000),
             authorName: authorName.substring(0, 200),
             postUrl,
+            debugLinks: debugLinks,
+            debugHtml: post.innerHTML.substring(0, 2500), // <--- Them dong nay de test roi doc log
           });
         }
       } catch {
