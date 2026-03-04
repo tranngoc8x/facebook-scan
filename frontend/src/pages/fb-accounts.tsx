@@ -40,6 +40,7 @@ import {
     ShieldCheck,
     Globe,
 } from "lucide-react";
+import { useAlert } from "@/components/alert-modal";
 
 interface FbAccount {
     _id: string;
@@ -64,6 +65,7 @@ export default function FbAccountsPage() {
     const [showVNCDialog, setShowVNCDialog] = useState(false);
     const [form, setForm] = useState({ email: "", password: "" });
     const [cookieText, setCookieText] = useState("");
+    const { showAlert, showConfirm } = useAlert();
 
     const fetchAccounts = async () => {
         try {
@@ -90,7 +92,7 @@ export default function FbAccountsPage() {
             fetchAccounts();
         } catch (err: unknown) {
             const error = err as { response?: { data?: { message?: string } } };
-            alert(error?.response?.data?.message || "Error creating account");
+            showAlert(error?.response?.data?.message || "Error creating account", "error");
         }
     };
 
@@ -101,7 +103,7 @@ export default function FbAccountsPage() {
             fetchAccounts();
         } catch (err: unknown) {
             const error = err as { response?: { data?: { message?: string } } };
-            alert(error?.response?.data?.message || "Action failed");
+            showAlert(error?.response?.data?.message || "Action failed", "error");
         } finally {
             setActionLoading(null);
         }
@@ -133,7 +135,7 @@ export default function FbAccountsPage() {
             const startData = await startRes.json();
 
             if (!startData.success) {
-                alert(startData.message || "Khong the bat dau dang nhap");
+                showAlert(startData.message || "Khong the bat dau dang nhap", "error");
                 return;
             }
 
@@ -148,13 +150,13 @@ export default function FbAccountsPage() {
                 const statusData = await statusRes.json();
 
                 if (statusData.status === "success") {
-                    alert("Dang nhap thanh cong!");
+                    showAlert("Dang nhap thanh cong!", "success");
                     fetchAccounts();
                     break;
                 }
 
                 if (statusData.status === "error") {
-                    alert(statusData.message || "Dang nhap that bai");
+                    showAlert(statusData.message || "Dang nhap that bai", "error");
                     fetchAccounts();
                     break;
                 }
@@ -163,7 +165,7 @@ export default function FbAccountsPage() {
             }
         } catch (err) {
             console.error(err);
-            alert("Loi ket noi server");
+            showAlert("Loi ket noi server", "error");
         } finally {
             setActionLoading(null);
             setShowVNCDialog(false);
@@ -540,11 +542,11 @@ export default function FbAccountsPage() {
                                                             variant="ghost"
                                                             className="h-8 w-8 text-destructive hover:text-destructive"
                                                             onClick={() => {
-                                                                if (confirm("Xac nhan xoa account nay?")) {
+                                                                showConfirm("Xac nhan xoa account nay?", () => {
                                                                     withAction(`del-${account._id}`, () =>
                                                                         deleteFbAccount(account._id),
                                                                     );
-                                                                }
+                                                                });
                                                             }}
                                                         >
                                                             <Trash2 className="h-4 w-4" />
