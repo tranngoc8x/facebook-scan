@@ -38,6 +38,12 @@ const groupSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    hashtags: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
   },
   {
     timestamps: true,

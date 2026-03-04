@@ -13,7 +13,7 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Send, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Send, MapPin, Loader2 } from "lucide-react";
 import * as api from "@/lib/api";
 
 interface Room {
@@ -23,6 +23,7 @@ interface Room {
     images: string[];
     location: string;
     locationKeywords: string[];
+    hashtags: string[];
     price: number;
     commentTemplate: string;
     isActive: boolean;
@@ -38,6 +39,7 @@ interface RoomForm {
     content: string;
     location: string;
     locationKeywords: string;
+    hashtags: string;
     price: string;
     commentTemplate: string;
 }
@@ -47,6 +49,7 @@ const defaultForm: RoomForm = {
     content: "",
     location: "",
     locationKeywords: "",
+    hashtags: "",
     price: "",
     commentTemplate: "",
 };
@@ -62,17 +65,24 @@ export default function Rooms() {
     const [files, setFiles] = useState<File[]>([]);
     const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+    const [isPosting, setIsPosting] = useState(false);
 
     useEffect(() => {
+        const loadData = async () => {
+            const [roomsRes, groupsRes] = await Promise.all([api.getRooms(), api.getGroups()]);
+            setRooms(roomsRes.data);
+            setGroups(groupsRes.data);
+            setLoading(false);
+        };
         loadData();
     }, []);
 
-    async function loadData() {
+    const reloadData = async () => {
         const [roomsRes, groupsRes] = await Promise.all([api.getRooms(), api.getGroups()]);
         setRooms(roomsRes.data);
         setGroups(groupsRes.data);
         setLoading(false);
-    }
+    };
 
     function openCreate() {
         setEditing(null);
@@ -88,6 +98,7 @@ export default function Rooms() {
             content: room.content,
             location: room.location,
             locationKeywords: (room.locationKeywords || []).join(", "),
+            hashtags: (room.hashtags || []).join(", "),
             price: room.price ? String(room.price) : "",
             commentTemplate: room.commentTemplate || "",
         });
@@ -105,13 +116,13 @@ export default function Rooms() {
             await api.createRoom(formData);
         }
         setOpen(false);
-        loadData();
+        reloadData();
     }
 
     async function handleDelete(id: string) {
         if (!confirm("Ban co chac muon xoa phong tro nay?")) return;
         await api.deleteRoom(id);
-        loadData();
+        reloadData();
     }
 
     function openPostDialog(room: Room) {
@@ -126,6 +137,22 @@ export default function Rooms() {
         );
     }
 
+    async function handlePostToGroups() {
+        if (!selectedRoom || selectedGroups.length === 0) return;
+        setIsPosting(true);
+        try {
+            await api.postRoomToGroups(selectedRoom._id, selectedGroups);
+            alert("Đã yêu cầu đăng bài thành công!");
+            setPostOpen(false);
+        } catch (error) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const err = error as any;
+            alert(err?.response?.data?.error || "Có lỗi xảy ra khi yêu cầu đăng bài.");
+        } finally {
+            setIsPosting(false);
+        }
+    }
+
     function formatPrice(price: number) {
         if (!price) return "";
         return new Intl.NumberFormat("vi-VN").format(price) + " VND/thang";
@@ -138,17 +165,17 @@ export default function Rooms() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Room Listings</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Post Listings</h1>
                 <Button onClick={openCreate}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Add New Room
+                    Add New Post
                 </Button>
             </div>
 
             {rooms.length === 0 ? (
                 <Card>
                     <CardContent className="py-12 text-center text-muted-foreground">
-                        No rooms added yet
+                        No posts added yet
                     </CardContent>
                 </Card>
             ) : (
@@ -166,21 +193,19 @@ export default function Rooms() {
                                     <MapPin className="h-3 w-3" />
                                     {room.location}
                                 </div>
-                                {room.price > 0 && (
-                                    <div className="text-sm font-semibold text-green-500">
-                                        {formatPrice(room.price)}
-                                    </div>
-                                )}
+                                <div className="text-sm font-semibold text-green-500">
+                                    {room.price > 0 ? formatPrice(room.price) : "N/A"}
+                                </div>
                             </CardHeader>
                             <CardContent className="flex-1">
                                 <p className="text-sm text-muted-foreground line-clamp-3">
                                     {room.content}
                                 </p>
-                                {room.locationKeywords?.length > 0 && (
+                                {room.hashtags?.length > 0 && (
                                     <div className="mt-3 flex flex-wrap gap-1">
-                                        {room.locationKeywords.map((kw, i) => (
+                                        {room.hashtags.map((tag, i) => (
                                             <Badge key={i} variant="outline" className="text-xs">
-                                                {kw}
+                                                {tag}
                                             </Badge>
                                         ))}
                                     </div>
@@ -210,7 +235,7 @@ export default function Rooms() {
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>{editing ? "Edit Room" : "Add New Room"}</DialogTitle>
+                        <DialogTitle>{editing ? "Edit Post" : "Add New Post"}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                         <div className="space-y-2">
@@ -226,8 +251,8 @@ export default function Rooms() {
                             <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Quan 7, TP.HCM" />
                         </div>
                         <div className="space-y-2">
-                            <Label>Location Keywords (comma separated)</Label>
-                            <Input value={form.locationKeywords} onChange={(e) => setForm({ ...form, locationKeywords: e.target.value })} placeholder="quan 7, phu my hung" />
+                            <Label>Hashtags (comma separated)</Label>
+                            <Input value={form.hashtags} onChange={(e) => setForm({ ...form, hashtags: e.target.value })} placeholder="#phongtro, #quangtri, #giare" />
                         </div>
                         <div className="space-y-2">
                             <Label>Price (VND/month)</Label>
@@ -253,7 +278,7 @@ export default function Rooms() {
             <Dialog open={postOpen} onOpenChange={setPostOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Post Room to Groups</DialogTitle>
+                        <DialogTitle>Post to Groups</DialogTitle>
                     </DialogHeader>
                     {selectedRoom && (
                         <div className="space-y-4">
@@ -309,9 +334,9 @@ export default function Rooms() {
                     )}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setPostOpen(false)}>Cancel</Button>
-                        <Button disabled={selectedGroups.length === 0}>
-                            <Send className="mr-2 h-4 w-4" />
-                            Post Now ({selectedGroups.length})
+                        <Button disabled={selectedGroups.length === 0 || isPosting} onClick={handlePostToGroups}>
+                            {isPosting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                            {isPosting ? "Posting..." : `Post Now (${selectedGroups.length})`}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

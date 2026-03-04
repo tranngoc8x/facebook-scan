@@ -1,6 +1,7 @@
 const pw = require("./playwright");
 const ScannedPost = require("../models/ScannedPost");
 const Group = require("../models/Group");
+const FacebookAccount = require("../models/FacebookAccount");
 
 /**
  * Scan mot Facebook group, lay cac bai post moi
@@ -44,9 +45,26 @@ async function scanGroup(group, options = {}) {
     const rawPosts = await extractPosts(page, maxPosts);
     console.log(`[Scanner] Found ${rawPosts.length} posts in ${group.name}`);
 
+    // Load ten cac tai khoan Facebook cua minh de loc ra
+    const myAccounts = await FacebookAccount.find({}, { name: 1, email: 1 });
+    const myNames = myAccounts
+      .map((a) => a.name)
+      .filter(Boolean)
+      .map((n) => n.toLowerCase().trim());
+
     // Luu posts moi vao DB
     for (const raw of rawPosts) {
       try {
+        // Skip bai viet cua chinh minh
+        if (
+          raw.authorName &&
+          myNames.some((name) => raw.authorName.toLowerCase().trim() === name)
+        ) {
+          console.log(`[Scanner] Skipping own post by "${raw.authorName}"`);
+          result.skipped++;
+          continue;
+        }
+
         // Check neu da scan roi
         const existing = await ScannedPost.findOne({ fbPostId: raw.fbPostId });
         if (existing) {
@@ -67,7 +85,6 @@ async function scanGroup(group, options = {}) {
         result.newPosts++;
       } catch (err) {
         if (err.code === 11000) {
-          // Duplicate key - da scan roi
           result.skipped++;
         } else {
           result.errors.push(err.message);

@@ -33,6 +33,12 @@ const roomSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    hashtags: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
     price: {
       type: Number,
       default: 0,

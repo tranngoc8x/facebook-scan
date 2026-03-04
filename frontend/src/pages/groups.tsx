@@ -29,6 +29,7 @@ interface Group {
     name: string;
     url: string;
     description: string;
+    hashtags: string[];
     autoScan: boolean;
     autoPost: boolean;
     isActive: boolean;
@@ -39,6 +40,7 @@ interface GroupForm {
     name: string;
     url: string;
     description: string;
+    hashtags: string;
     autoScan: boolean;
     autoPost: boolean;
 }
@@ -47,6 +49,7 @@ const defaultForm: GroupForm = {
     name: "",
     url: "",
     description: "",
+    hashtags: "",
     autoScan: false,
     autoPost: false,
 };
@@ -83,6 +86,7 @@ export default function Groups() {
             name: group.name,
             url: group.url,
             description: group.description || "",
+            hashtags: (group.hashtags || []).join(", "),
             autoScan: group.autoScan,
             autoPost: group.autoPost,
         });
@@ -235,6 +239,14 @@ export default function Groups() {
                                 value={form.description}
                                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                                 rows={3}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Hashtags (comma separated)</Label>
+                            <Input
+                                value={form.hashtags}
+                                onChange={(e) => setForm({ ...form, hashtags: e.target.value })}
+                                placeholder="#thuecanho, #phongtro, #bds"
                             />
                         </div>
                         <div className="flex items-center justify-between">

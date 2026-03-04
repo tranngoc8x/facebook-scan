@@ -29,7 +29,18 @@ exports.getById = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const { name, url, fbGroupId, description, autoScan, autoPost } = req.body;
+    const { name, url, fbGroupId, description, autoScan, autoPost, hashtags } =
+      req.body;
+
+    let parsedHashtags = hashtags;
+    if (typeof hashtags === "string") {
+      parsedHashtags = hashtags
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((h) => (h.startsWith("#") ? h : `#${h}`));
+    }
+
     const group = await Group.create({
       name,
       url,
@@ -37,6 +48,7 @@ exports.create = async (req, res, next) => {
       description,
       autoScan,
       autoPost,
+      hashtags: parsedHashtags || [],
     });
     res.status(201).json({ success: true, data: group });
   } catch (err) {
@@ -46,7 +58,17 @@ exports.create = async (req, res, next) => {
 
 exports.update = async (req, res, next) => {
   try {
-    const group = await Group.findByIdAndUpdate(req.params.id, req.body, {
+    const updateData = { ...req.body };
+
+    if (typeof updateData.hashtags === "string") {
+      updateData.hashtags = updateData.hashtags
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((h) => (h.startsWith("#") ? h : `#${h}`));
+    }
+
+    const group = await Group.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
     });

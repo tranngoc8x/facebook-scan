@@ -20,15 +20,15 @@ import {
     MessageSquare,
     Settings,
     ScanSearch,
-    UserCheck,
+    FolderKanban,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 const navItems = [
     { title: "Dashboard", url: "/", icon: LayoutDashboard },
-    { title: "FB Accounts", url: "/fb-accounts", icon: UserCheck },
-    { title: "Groups", url: "/groups", icon: Users },
-    { title: "Rooms", url: "/rooms", icon: Home },
+    { title: "FB Accounts", url: "/fb-accounts", icon: Users },
+    { title: "Posts", url: "/rooms", icon: Home },
+    { title: "Groups", url: "/groups", icon: FolderKanban },
     { title: "Scanned Posts", url: "/posts", icon: FileText },
     { title: "Comments", url: "/comments", icon: MessageSquare },
     { title: "Settings", url: "/settings", icon: Settings },

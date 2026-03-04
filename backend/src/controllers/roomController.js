@@ -35,6 +35,7 @@ exports.create = async (req, res, next) => {
       content,
       location,
       locationKeywords,
+      hashtags,
       price,
       commentTemplate,
     } = req.body;
@@ -61,6 +62,15 @@ exports.create = async (req, res, next) => {
         .filter(Boolean);
     }
 
+    let parsedHashtags = hashtags;
+    if (typeof hashtags === "string") {
+      parsedHashtags = hashtags
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((h) => (h.startsWith("#") ? h : `#${h}`));
+    }
+
     const room = await Room.create({
       title,
       content,
@@ -68,6 +78,7 @@ exports.create = async (req, res, next) => {
       videos,
       location,
       locationKeywords: keywords || [],
+      hashtags: parsedHashtags || [],
       price: price ? Number(price) : 0,
       commentTemplate,
     });
@@ -106,6 +117,14 @@ exports.update = async (req, res, next) => {
         .split(",")
         .map((k) => k.trim().toLowerCase())
         .filter(Boolean);
+    }
+
+    if (typeof updateData.hashtags === "string") {
+      updateData.hashtags = updateData.hashtags
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+        .map((h) => (h.startsWith("#") ? h : `#${h}`));
     }
 
     if (updateData.price) updateData.price = Number(updateData.price);
@@ -170,6 +189,38 @@ exports.removeMedia = async (req, res, next) => {
 
     await room.save();
     res.json({ success: true, data: room });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.postToGroups = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { groupIds } = req.body;
+
+    const Room = require("../models/Room");
+    const room = await Room.findById(id);
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: "Bài viết không tồn tại (Room not found)",
+      });
+    }
+
+    if (!groupIds || !Array.isArray(groupIds) || groupIds.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng chọn ít nhất 1 group" });
+    }
+
+    // Call service to post to groups asynchronously
+    const groupPoster = require("../services/groupPoster");
+    groupPoster
+      .startPostingTask(room._id, groupIds)
+      .catch((err) => console.error("Error in startPostingTask:", err));
+
+    res.json({ success: true, message: "Đã đưa vào hàng đợi đăng bài" });
   } catch (err) {
     next(err);
   }

@@ -56,6 +56,7 @@ router.post("/rooms", upload.array("files", 10), roomController.create);
 router.put("/rooms/:id", upload.array("files", 10), roomController.update);
 router.delete("/rooms/:id", roomController.remove);
 router.patch("/rooms/:id/remove-media", roomController.removeMedia);
+router.post("/rooms/:id/post", roomController.postToGroups);
 
 // Scanned Posts
 router.get("/posts", postController.getAll);

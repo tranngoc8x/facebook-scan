@@ -15,9 +15,8 @@ api.interceptors.response.use((res) => {
 
 // Groups
 export const getGroups = () => api.get("/groups");
-export const createGroup = (data: Record<string, unknown>) =>
-  api.post("/groups", data);
-export const updateGroup = (id: string, data: Record<string, unknown>) =>
+export const createGroup = (data: any) => api.post("/groups", data);
+export const updateGroup = (id: string, data: any) =>
   api.put(`/groups/${id}`, data);
 export const deleteGroup = (id: string) => api.delete(`/groups/${id}`);
 export const toggleScan = (id: string) =>
@@ -34,6 +33,8 @@ export const updateRoom = (id: string, data: FormData) =>
     headers: { "Content-Type": "multipart/form-data" },
   });
 export const deleteRoom = (id: string) => api.delete(`/rooms/${id}`);
+export const postRoomToGroups = (id: string, groupIds: string[]) =>
+  api.post(`/rooms/${id}/post`, { groupIds });
 
 // Posts
 export const getPosts = (params?: string) =>
@@ -46,8 +47,7 @@ export const getComments = (params?: string) =>
 
 // Settings
 export const getSettings = () => api.get("/settings");
-export const updateSettings = (data: Record<string, unknown>) =>
-  api.put("/settings", data);
+export const updateSettings = (data: any) => api.put("/settings", data);
 
 // Auth
 export const fbLogin = (data: {
