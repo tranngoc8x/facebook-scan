@@ -424,13 +424,6 @@ exports.interactiveLogin = async (req, res) => {
       email: account.email,
       password: account.getPassword(),
     });
-Name	Type	Length	Decimals	Not Null	Virtual	Key	Virtual Type	Expression	Enum Value	Default Value	Comment	Storage	Column Format	Character Set	Collation	Key Length	Key Order	Generated Always	On Update Current_Timestamp	Binary	Auto Increment	Unsigned	Zerofill
-address_new	varchar	1024		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
-address_en_new	varchar	1024		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
-title_city_new	varchar	70		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
-title_ward_new	varchar	70		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
-city_new_id	int	11		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025							false	false	false	false	false	false
-ward_new_id	int	11		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025							false	false	false	false	false	false
     if (result.success) {
       // Luu cookies vao account
       account.status = "active";
