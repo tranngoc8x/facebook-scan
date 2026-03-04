@@ -37,9 +37,8 @@ async function scanGroup(group, options = {}) {
       await page.waitForTimeout(2000 + Math.random() * 1000);
     }
 
-    // Scroll lai len top
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(1000);
+    // KHONG scroll lai len top - Facebook se unload posts khoi DOM
+    // Extract posts ngay tai vi tri da scroll
 
     // Extract posts
     const rawPosts = await extractPosts(page, maxPosts);
@@ -50,13 +49,24 @@ async function scanGroup(group, options = {}) {
     const myNames = myAccounts
       .map((a) => a.name)
       .filter(Boolean)
-      .map((n) => n.toLowerCase().trim());
+      .map((n) => n.toLowerCase().trim())
+      .filter((n) => n.length > 0);
 
     // Luu posts moi vao DB
     for (const raw of rawPosts) {
       try {
+        // Skip bai viet khong co author
+        if (!raw.authorName || raw.authorName.trim().length === 0) {
+          console.log(
+            `[Scanner] Skipping post without author: "${raw.content?.substring(0, 50)}..."`,
+          );
+          result.skipped++;
+          continue;
+        }
+
         // Skip bai viet cua chinh minh
         if (
+          myNames.length > 0 &&
           raw.authorName &&
           myNames.some((name) => raw.authorName.toLowerCase().includes(name))
         ) {
@@ -112,75 +122,98 @@ async function scanGroup(group, options = {}) {
 
 /**
  * Extract posts tu page hien tai
+ * Su dung feed children thay vi div[role="article"] vi Facebook da thay doi DOM
  */
 async function extractPosts(page, maxPosts) {
   const posts = await page.evaluate((limit) => {
     const results = [];
 
-    // Facebook render posts trong cac div[role="article"]
-    const articles = document.querySelectorAll('div[role="article"]');
+    // Strategy 1: Tim div[role="article"] (cach cu)
+    let postElements = document.querySelectorAll('div[role="article"]');
 
-    for (const article of articles) {
+    // Strategy 2: Neu khong co article, dung feed children
+    if (postElements.length === 0) {
+      const feed = document.querySelector('[role="feed"]');
+      if (feed) {
+        postElements = feed.children;
+      }
+    }
+
+    for (const post of postElements) {
       if (results.length >= limit) break;
 
       try {
-        // Lay post ID tu data attribute hoac link
+        // Skip cac element qua nho (divider, spacer, etc.)
+        if ((post.textContent?.trim().length || 0) < 15) continue;
+
+        // Tim tat ca cac link trong post
+        const allLinks = post.querySelectorAll("a[href]");
+
+        // Lay post ID tu link
         let fbPostId = "";
-        const permalink = article.querySelector(
-          'a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid"]',
-        );
-        if (permalink) {
-          const href = permalink.getAttribute("href") || "";
-          // Extract post ID tu URL
+        let postUrl = "";
+        for (const link of allLinks) {
+          const href = link.getAttribute("href") || "";
+          // Tim permalink patterns
           const postMatch = href.match(
-            /\/posts\/(\d+)|permalink\/(\d+)|story_fbid=(\d+)/,
+            /\/posts\/(\w+)|permalink\/(\d+)|story_fbid=(\d+)/,
           );
           if (postMatch) {
             fbPostId = postMatch[1] || postMatch[2] || postMatch[3];
-          } else {
-            // Dung URL lam ID
-            fbPostId = href.replace(/[^a-zA-Z0-9]/g, "").substring(0, 50);
+            postUrl = href.startsWith("http")
+              ? href
+              : "https://www.facebook.com" + href;
+            break;
           }
         }
 
         if (!fbPostId) {
           // Generate ID tu noi dung
           const text =
-            article.textContent?.substring(0, 100) || Math.random().toString();
-          fbPostId = "gen_" + btoa(text).substring(0, 30);
+            post.textContent?.substring(0, 100) || Math.random().toString();
+          try {
+            fbPostId =
+              "gen_" +
+              btoa(unescape(encodeURIComponent(text))).substring(0, 30);
+          } catch {
+            fbPostId = "gen_" + Math.random().toString(36).substring(2, 15);
+          }
         }
 
-        // Lay noi dung post
+        // Lay noi dung post - tim div co text dai nhat
         let content = "";
-        // Tim div chua text chinh cua post (khong phai comments)
-        const textDivs = article.querySelectorAll(
-          'div[data-ad-preview="message"], div[dir="auto"]',
+        const textDivs = post.querySelectorAll(
+          'div[data-ad-preview="message"], div[dir="auto"], span[dir="auto"]',
         );
         for (const div of textDivs) {
           const text = div.textContent?.trim() || "";
-          if (text.length > content.length && text.length > 20) {
+          if (text.length > content.length && text.length > 10) {
             content = text;
           }
         }
 
-        // Lay ten tac gia
+        // Lay ten tac gia - thu nhieu selector
         let authorName = "";
-        const authorLink = article.querySelector(
-          'a[role="link"] strong, h3 a, h2 a',
-        );
-        if (authorLink) {
-          authorName = authorLink.textContent?.trim() || "";
+        const authorSelectors = [
+          'a[role="link"] strong',
+          "strong a",
+          "h2 a",
+          "h3 a",
+          "h4 a",
+          'a[role="link"] span[dir="auto"]',
+        ];
+        for (const sel of authorSelectors) {
+          const el = post.querySelector(sel);
+          if (el) {
+            const name = el.textContent?.trim() || "";
+            if (name.length > 1 && name.length < 100) {
+              authorName = name;
+              break;
+            }
+          }
         }
 
-        // Lay post URL
-        let postUrl = "";
-        if (permalink) {
-          const href = permalink.getAttribute("href") || "";
-          postUrl = href.startsWith("http")
-            ? href
-            : "https://www.facebook.com" + href;
-        }
-
+        // Chi them post co noi dung
         if (content && content.length > 10) {
           results.push({
             fbPostId,
