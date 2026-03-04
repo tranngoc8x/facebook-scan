@@ -120,8 +120,8 @@ export default function FbAccountsPage() {
         setActionLoading(`ilogin-${accountId}`);
         setShowVNCDialog(true);
 
-        // Mo noVNC trong tab moi
-        const vncUrl = `${window.location.protocol}//${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
+        // Mo noVNC trong tab moi (dung vnc_lite de tranh loi UI module cua vnc.html tren browser user)
+        const vncUrl = `${window.location.protocol}//${window.location.hostname}:6080/vnc_lite.html?scale=true`;
         const vncWindow = window.open(vncUrl, "noVNC", "width=1300,height=850");
 
         try {

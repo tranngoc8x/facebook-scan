@@ -485,19 +485,30 @@ async function _runInteractiveLogin({ email, password, accountId }) {
       }
     }
 
-    // Poll URL moi 2s (toi da 5 phut)
+    // Poll URL moi 3s (toi da 5 phut)
+    // Dung setTimeout thay vi page.waitForTimeout de tranh loi khi page bi dong
     console.log("[FB Auth] Waiting for user to complete login via VNC...");
     const maxWaitMs = 5 * 60 * 1000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
-      await page.waitForTimeout(2000);
+      // Dung setTimeout de delay - khong phu thuoc vao page
+      await new Promise((r) => setTimeout(r, 3000));
+
+      // Check login status cua session hien tai - neu khong con pending thi thoat
+      const currentSession = loginSessions.get(accountId);
+      if (!currentSession || currentSession.status !== "pending") {
+        console.log("[FB Auth] Session no longer pending, stopping poll");
+        return;
+      }
 
       let currentUrl;
       try {
         currentUrl = page.url();
-      } catch {
-        break;
+      } catch (e) {
+        // Browser/page da bi dong (co the do lan login moi)
+        console.log("[FB Auth] Page closed during poll, stopping gracefully");
+        return;
       }
 
       if (
@@ -508,19 +519,23 @@ async function _runInteractiveLogin({ email, password, accountId }) {
         (currentUrl.includes("facebook.com") || currentUrl.includes("fb.com"))
       ) {
         console.log("[FB Auth] Login successful via VNC!");
-        await pw.saveHeadedCookies();
-        const cookies = await pw.getHeadedCookiesJSON();
-        const userName = await getProfileName(page).catch(
-          () => "Facebook User",
-        );
-        console.log(`[FB Auth] Logged in as: ${userName}`);
+        try {
+          await pw.saveHeadedCookies();
+          const cookies = await pw.getHeadedCookiesJSON();
+          const userName = await getProfileName(page).catch(
+            () => "Facebook User",
+          );
+          console.log(`[FB Auth] Logged in as: ${userName}`);
 
-        await pw.closeHeadedBrowser();
-        loginSessions.set(accountId, {
-          status: "success",
-          cookies,
-          userName,
-        });
+          await pw.closeHeadedBrowser();
+          loginSessions.set(accountId, {
+            status: "success",
+            cookies,
+            userName,
+          });
+        } catch (e) {
+          console.log("[FB Auth] Error saving cookies:", e.message);
+        }
         return;
       }
     }
@@ -533,13 +548,19 @@ async function _runInteractiveLogin({ email, password, accountId }) {
       error: "Het thoi gian cho (5 phut). Vui long thu lai.",
     });
   } catch (err) {
-    console.error("[FB Auth] Interactive login error:", err.message);
+    const msg = err.message || "";
+    // Neu browser bi dong do lan login moi -> khong bao loi
+    if (msg.includes("Target") && msg.includes("closed")) {
+      console.log("[FB Auth] Browser closed (new login started), ignoring");
+      return;
+    }
+    console.error("[FB Auth] Interactive login error:", msg);
     try {
       await pw.closeHeadedBrowser();
     } catch {}
     loginSessions.set(accountId, {
       status: "error",
-      error: `Loi dang nhap: ${err.message}`,
+      error: `Loi dang nhap: ${msg}`,
     });
   }
 }
