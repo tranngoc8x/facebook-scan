@@ -58,7 +58,7 @@ async function scanGroup(group, options = {}) {
         // Skip bai viet cua chinh minh
         if (
           raw.authorName &&
-          myNames.some((name) => raw.authorName.toLowerCase().trim() === name)
+          myNames.some((name) => raw.authorName.toLowerCase().includes(name))
         ) {
           console.log(`[Scanner] Skipping own post by "${raw.authorName}"`);
           result.skipped++;

@@ -30,15 +30,8 @@ exports.getById = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const {
-      title,
-      content,
-      location,
-      locationKeywords,
-      hashtags,
-      price,
-      commentTemplate,
-    } = req.body;
+    const { title, content, location, locationKeywords, hashtags, price } =
+      req.body;
 
     const images = [];
     const videos = [];
@@ -80,7 +73,6 @@ exports.create = async (req, res, next) => {
       locationKeywords: keywords || [],
       hashtags: parsedHashtags || [],
       price: price ? Number(price) : 0,
-      commentTemplate,
     });
 
     res.status(201).json({ success: true, data: room });

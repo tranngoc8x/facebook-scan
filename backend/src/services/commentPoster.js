@@ -9,7 +9,7 @@ const Setting = require("../models/Setting");
  * Thay the bien: {location}, {price}, {title}
  */
 function buildCommentContent(room) {
-  let template = room.commentTemplate || "";
+  let template = room.content || "";
   if (!template) {
     // Default template
     template = `Em co phong cho thue tai ${room.location}, gia ${formatPrice(room.price)}/thang. Lien he em de biet them chi tiet a!`;

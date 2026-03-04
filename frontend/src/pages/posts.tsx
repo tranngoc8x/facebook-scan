@@ -13,7 +13,7 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Send, MapPin, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Send, MapPin, Loader2, UploadCloud, X } from "lucide-react";
 import { useAlert } from "@/components/alert-modal";
 import * as api from "@/lib/api";
 
@@ -26,7 +26,6 @@ interface Room {
     locationKeywords: string[];
     hashtags: string[];
     price: number;
-    commentTemplate: string;
     isActive: boolean;
 }
 
@@ -42,7 +41,6 @@ interface RoomForm {
     locationKeywords: string;
     hashtags: string;
     price: string;
-    commentTemplate: string;
 }
 
 const defaultForm: RoomForm = {
@@ -52,7 +50,6 @@ const defaultForm: RoomForm = {
     locationKeywords: "",
     hashtags: "",
     price: "",
-    commentTemplate: "",
 };
 
 export default function Posts() {
@@ -67,6 +64,7 @@ export default function Posts() {
     const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
     const [isPosting, setIsPosting] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const { showAlert, showConfirm } = useAlert();
 
     useEffect(() => {
@@ -102,7 +100,6 @@ export default function Posts() {
             locationKeywords: (room.locationKeywords || []).join(", "),
             hashtags: (room.hashtags || []).join(", "),
             price: room.price ? String(room.price) : "",
-            commentTemplate: room.commentTemplate || "",
         });
         setFiles([]);
         setOpen(true);
@@ -139,6 +136,42 @@ export default function Posts() {
             prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
         );
     }
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const updateFiles = (newFiles: File[]) => {
+        setFiles(prev => {
+            const combined = [...prev, ...newFiles];
+            if (combined.length > 6) {
+                showAlert("Chi cho phep toi da 6 anh/video cho 1 post.", "error");
+                return combined.slice(0, 6);
+            }
+            return combined;
+        });
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
+        updateFiles(droppedFiles);
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFiles = Array.from(e.target.files || []).filter(f => f.type.startsWith("image/") || f.type.startsWith("video/"));
+        updateFiles(selectedFiles);
+    };
+
+    const removeFile = (index: number) => {
+        setFiles(prev => prev.filter((_, i) => i !== index));
+    };
 
     async function handlePostToGroups() {
         if (!selectedRoom || selectedGroups.length === 0) return;
@@ -262,12 +295,53 @@ export default function Posts() {
                             <Input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
                         </div>
                         <div className="space-y-2">
-                            <Label>Comment Template</Label>
-                            <Textarea value={form.commentTemplate} onChange={(e) => setForm({ ...form, commentTemplate: e.target.value })} rows={3} placeholder="Noi dung comment mau khi match..." />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Images / Videos</Label>
-                            <Input type="file" multiple accept="image/*,video/*" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                            <Label>Images / Videos (Max 6)</Label>
+                            <div
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                                    }`}
+                            >
+                                <UploadCloud className="h-8 w-8 text-muted-foreground mb-4" />
+                                <p className="text-sm font-medium mb-1">Drag & drop files here</p>
+                                <p className="text-xs text-muted-foreground mb-4">Or click to select files (Images/Videos, max 6)</p>
+                                <Input
+                                    type="file"
+                                    multiple
+                                    accept="image/*,video/*"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                    id="file-upload"
+                                />
+                                <Label htmlFor="file-upload" className="cursor-pointer">
+                                    <Button type="button" variant="outline" size="sm" className="pointer-events-none">
+                                        Select Files
+                                    </Button>
+                                </Label>
+                            </div>
+                            {files.length > 0 && (
+                                <div className="grid grid-cols-3 gap-2 mt-4">
+                                    {files.map((file, idx) => (
+                                        <div key={idx} className="relative group border rounded-md p-1">
+                                            <div className="aspect-square flex items-center justify-center bg-muted/30 overflow-hidden rounded">
+                                                {file.type.startsWith("image/") ? (
+                                                    <img src={URL.createObjectURL(file)} alt="" className="object-cover w-full h-full" />
+                                                ) : (
+                                                    <video src={URL.createObjectURL(file)} className="object-cover w-full h-full" />
+                                                )}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeFile(idx)}
+                                                className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <DialogFooter>
