@@ -1,0 +1,37 @@
+services:
+  backend:
+    build: ./backend
+    container_name: fb-scan-backend
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=4000
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: fb-scan-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_TARGET=http://backend:4000
+    volumes:
+      - ./frontend/src:/app/src
+    restart: unless-stopped
+
+  # worker:
+  #   build: ./worker
+  #   container_name: fb-scan-worker
+  #   environment:
+  #     - NODE_ENV=development
+  #   volumes:
+  #     - ./worker/src:/app/src
+  #   restart: unless-stopped
