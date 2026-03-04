@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
     Plus,
-    LogIn,
+    KeyRound,
     LogOut,
     Trash2,
     Loader2,
@@ -61,7 +61,10 @@ export default function FbAccountsPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showCookieDialog, setShowCookieDialog] = useState<string | null>(null);
-    const [showBrowserLogin, setShowBrowserLogin] = useState<string | null>(null);
+    const [show2FADialog, setShow2FADialog] = useState<string | null>(null);
+    const [twoFACode, setTwoFACode] = useState("");
+    const [twoFASessionId, setTwoFASessionId] = useState<string | null>(null);
+    const [twoFALoading, setTwoFALoading] = useState(false);
     const [form, setForm] = useState({ email: "", password: "" });
     const [cookieText, setCookieText] = useState("");
 
@@ -116,20 +119,58 @@ export default function FbAccountsPage() {
         setShowCookieDialog(null);
     };
 
-    const handleBrowserLogin = (accountId: string) => {
-        const account = accounts.find((a) => a._id === accountId);
-        if (!account) return;
-        // Mo tab moi voi trang login qua proxy
-        window.open(
-            `/api/fb-accounts/${accountId}/browser-login`,
-            "_blank",
-            "width=500,height=700",
-        );
-        setShowBrowserLogin(null);
-        // Poll trang thai sau vai giay
-        setTimeout(() => fetchAccounts(), 5000);
-        setTimeout(() => fetchAccounts(), 15000);
-        setTimeout(() => fetchAccounts(), 30000);
+    const handleInteractiveLogin = async (accountId: string) => {
+        setActionLoading(`ilogin-${accountId}`);
+        try {
+            const res = await fetch(`/api/fb-accounts/${accountId}/interactive-login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                fetchAccounts();
+            } else if (data.requiresTwoFactor && data.sessionId) {
+                setTwoFASessionId(data.sessionId);
+                setShow2FADialog(accountId);
+                setTwoFACode("");
+            } else {
+                alert(data.error || data.message || "Dang nhap that bai");
+                fetchAccounts();
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Loi ket noi server");
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleSubmit2FA = async () => {
+        if (!show2FADialog || !twoFASessionId || !twoFACode.trim()) return;
+        setTwoFALoading(true);
+        try {
+            const res = await fetch(`/api/fb-accounts/${show2FADialog}/submit-2fa`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId: twoFASessionId, code: twoFACode.trim() }),
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setShow2FADialog(null);
+                setTwoFASessionId(null);
+                setTwoFACode("");
+                fetchAccounts();
+            } else {
+                alert(data.error || "Ma 2FA khong dung");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Loi ket noi server");
+        } finally {
+            setTwoFALoading(false);
+        }
     };
 
     const statusBadge = (account: FbAccount) => {
@@ -269,35 +310,6 @@ export default function FbAccountsPage() {
                     </DialogContent>
                 </Dialog>
 
-                {/* Browser login dialog */}
-                <Dialog
-                    open={!!showBrowserLogin}
-                    onOpenChange={(open) => {
-                        if (!open) setShowBrowserLogin(null);
-                    }}
-                >
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Dang nhap bang Browser</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-2">
-                            <p className="text-sm text-muted-foreground">
-                                Bam nut ben duoi de mo trang dang nhap Facebook trong tab moi.
-                                Sau khi dang nhap thanh cong (ke ca co 2FA), cookies se duoc tu
-                                dong luu lai.
-                            </p>
-                            <Button
-                                onClick={() =>
-                                    showBrowserLogin && handleBrowserLogin(showBrowserLogin)
-                                }
-                                className="w-full"
-                            >
-                                <Globe className="h-4 w-4 mr-2" />
-                                Mo trang dang nhap Facebook
-                            </Button>
-                        </div>
-                    </DialogContent>
-                </Dialog>
 
                 {/* Account list */}
                 {accounts.length === 0 ? (
@@ -390,78 +402,76 @@ export default function FbAccountsPage() {
 
                                             {/* Action icons */}
                                             <div className="flex items-center gap-1 shrink-0">
-                                                {/* Auto Login */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className={`h-8 w-8 ${isConnected ? "opacity-30 cursor-not-allowed" : ""}`}
-                                                            onClick={() =>
-                                                                withAction(`login-${account._id}`, () =>
-                                                                    loginFbAccount(account._id),
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                isConnected ||
-                                                                actionLoading === `login-${account._id}`
-                                                            }
-                                                        >
-                                                            {actionLoading === `login-${account._id}` ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : (
-                                                                <LogIn className="h-4 w-4" />
-                                                            )}
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {isConnected ? "Da dang nhap" : "Dang nhap"}
-                                                    </TooltipContent>
-                                                </Tooltip>
+                                                {!isConnected && (
+                                                    <>
+                                                        {/* Auto Login */}
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8"
+                                                                    onClick={() =>
+                                                                        withAction(`login-${account._id}`, () =>
+                                                                            loginFbAccount(account._id),
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        actionLoading === `login-${account._id}`
+                                                                    }
+                                                                >
+                                                                    {actionLoading === `login-${account._id}` ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    ) : (
+                                                                        <KeyRound className="h-4 w-4" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Dang nhap</TooltipContent>
+                                                        </Tooltip>
 
-                                                {/* Browser Login (2FA) */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className={`h-8 w-8 ${isConnected ? "opacity-30 cursor-not-allowed" : ""}`}
-                                                            onClick={() =>
-                                                                setShowBrowserLogin(account._id)
-                                                            }
-                                                            disabled={isConnected}
-                                                        >
-                                                            <Globe className="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {isConnected
-                                                            ? "Da dang nhap"
-                                                            : "Dang nhap bang Browser (2FA)"}
-                                                    </TooltipContent>
-                                                </Tooltip>
+                                                        {/* Interactive Login (ho tro 2FA) */}
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8"
+                                                                    onClick={() =>
+                                                                        handleInteractiveLogin(account._id)
+                                                                    }
+                                                                    disabled={
+                                                                        actionLoading === `ilogin-${account._id}`
+                                                                    }
+                                                                >
+                                                                    {actionLoading === `ilogin-${account._id}` ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    ) : (
+                                                                        <Globe className="h-4 w-4" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Dang nhap (ho tro 2FA)</TooltipContent>
+                                                        </Tooltip>
 
-                                                {/* Cookies */}
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            className={`h-8 w-8 ${isConnected ? "opacity-30 cursor-not-allowed" : ""}`}
-                                                            onClick={() =>
-                                                                setShowCookieDialog(account._id)
-                                                            }
-                                                            disabled={isConnected}
-                                                        >
-                                                            <Cookie className="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {isConnected
-                                                            ? "Da dang nhap"
-                                                            : "Login bang Cookies"}
-                                                    </TooltipContent>
-                                                </Tooltip>
+                                                        {/* Cookies */}
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8"
+                                                                    onClick={() =>
+                                                                        setShowCookieDialog(account._id)
+                                                                    }
+                                                                >
+                                                                    <Cookie className="h-4 w-4" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Login bang Cookies</TooltipContent>
+                                                        </Tooltip>
+                                                    </>
+                                                )}
 
                                                 {/* Logout */}
                                                 <Tooltip>
@@ -548,6 +558,68 @@ export default function FbAccountsPage() {
                         </CardContent>
                     </Card>
                 )}
+
+                {/* 2FA Dialog */}
+                <Dialog
+                    open={!!show2FADialog}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setShow2FADialog(null);
+                            setTwoFASessionId(null);
+                            setTwoFACode("");
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Xac thuc 2 buoc (2FA)</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                Facebook yeu cau ma xac thuc. Nhap ma tu ung dung xac thuc
+                                (Google Authenticator, Authy, ...) hoac SMS.
+                            </p>
+                            <div className="space-y-2">
+                                <Label htmlFor="2fa-code">Ma xac thuc</Label>
+                                <Input
+                                    id="2fa-code"
+                                    placeholder="Nhap ma 6 so"
+                                    value={twoFACode}
+                                    onChange={(e) => setTwoFACode(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleSubmit2FA();
+                                    }}
+                                    maxLength={8}
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setShow2FADialog(null);
+                                        setTwoFASessionId(null);
+                                        setTwoFACode("");
+                                    }}
+                                >
+                                    Huy
+                                </Button>
+                                <Button
+                                    onClick={handleSubmit2FA}
+                                    disabled={!twoFACode.trim() || twoFALoading}
+                                >
+                                    {twoFALoading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : null}
+                                    Xac nhan
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Phien xac thuc se het han sau 5 phut.
+                            </p>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
         </TooltipProvider>
     );

@@ -414,7 +414,7 @@ exports.interactiveLogin = async (req, res) => {
         .json({ success: false, message: "Khong tim thay tai khoan" });
     }
 
-    if (!account.password) {
+    if (!account.encryptedPassword) {
       return res
         .status(400)
         .json({ success: false, message: "Tai khoan chua co password" });
@@ -422,21 +422,26 @@ exports.interactiveLogin = async (req, res) => {
 
     const result = await facebookAuth.interactiveLogin({
       email: account.email,
-      password: account.password,
+      password: account.getPassword(),
     });
-
+Name	Type	Length	Decimals	Not Null	Virtual	Key	Virtual Type	Expression	Enum Value	Default Value	Comment	Storage	Column Format	Character Set	Collation	Key Length	Key Order	Generated Always	On Update Current_Timestamp	Binary	Auto Increment	Unsigned	Zerofill
+address_new	varchar	1024		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
+address_en_new	varchar	1024		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
+title_city_new	varchar	70		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
+title_ward_new	varchar	70		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025			utf8mb3	utf8mb3_unicode_ci			false	false	false	false	false	false
+city_new_id	int	11		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025							false	false	false	false	false	false
+ward_new_id	int	11		false	false	false				NULL	Địa chỉ sau khi sáp nhập 2025							false	false	false	false	false	false
     if (result.success) {
       // Luu cookies vao account
-      account.status = "connected";
+      account.status = "active";
       account.cookies = result.cookies;
       account.error = null;
       account.lastLoginAt = new Date();
       if (result.userName) account.name = result.userName;
       await account.save();
     } else if (result.requiresTwoFactor) {
-      // Tra ve sessionId de client gui ma 2FA
-      account.status = "2fa_pending";
-      account.error = null;
+      // Giu nguyen status, cho user nhap 2FA
+      account.error = "Dang cho ma xac thuc 2FA";
       await account.save();
     }
 
@@ -476,7 +481,7 @@ exports.submit2FA = async (req, res) => {
     const result = await facebookAuth.submit2FA(sessionId, code);
 
     if (result.success) {
-      account.status = "connected";
+      account.status = "active";
       account.cookies = result.cookies;
       account.error = null;
       account.lastLoginAt = new Date();

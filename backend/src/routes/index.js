@@ -27,6 +27,11 @@ router.get("/fb-accounts/:id/status", fbAccountController.checkStatus);
 router.post("/fb-accounts/:id/save-cookies", fbAccountController.saveCookies);
 router.post("/fb-accounts/:id/set-active", fbAccountController.setActive);
 router.get("/fb-accounts/:id/browser-login", fbAccountController.browserLogin);
+router.post(
+  "/fb-accounts/:id/interactive-login",
+  fbAccountController.interactiveLogin,
+);
+router.post("/fb-accounts/:id/submit-2fa", fbAccountController.submit2FA);
 
 // Scan
 router.post("/scan/start", scanController.startScan);
