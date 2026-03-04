@@ -10,6 +10,7 @@ const settingController = require("../controllers/settingController");
 const authController = require("../controllers/authController");
 const scanController = require("../controllers/scanController");
 const fbAccountController = require("../controllers/fbAccountController");
+const postLogController = require("../controllers/postLogController");
 
 // Facebook Auth (legacy)
 router.post("/auth/fb-login", authController.login);
@@ -71,5 +72,8 @@ router.get("/comments/:id", commentController.getById);
 router.get("/settings", settingController.getAll);
 router.put("/settings", settingController.update);
 router.get("/settings/:key", settingController.getValue);
+
+// Post Logs
+router.get("/post-logs", postLogController.getAll);
 
 module.exports = router;

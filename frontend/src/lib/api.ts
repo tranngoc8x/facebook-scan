@@ -49,6 +49,10 @@ export const getComments = (params?: string) =>
 export const getSettings = () => api.get("/settings");
 export const updateSettings = (data: any) => api.put("/settings", data);
 
+// Post Logs
+export const getPostLogs = (params?: string) =>
+  api.get(`/post-logs${params ? "?" + params : ""}`);
+
 // Auth
 export const fbLogin = (data: {
   email?: string;

@@ -21,6 +21,7 @@ import {
     Settings,
     ScanSearch,
     FolderKanban,
+    History,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
@@ -29,6 +30,7 @@ const navItems = [
     { title: "FB Accounts", url: "/fb-accounts", icon: Users },
     { title: "Posts", url: "/rooms", icon: Home },
     { title: "Groups", url: "/groups", icon: FolderKanban },
+    { title: "Post History", url: "/post-history", icon: History },
     { title: "Scanned Posts", url: "/posts", icon: FileText },
     { title: "Comments", url: "/comments", icon: MessageSquare },
     { title: "Settings", url: "/settings", icon: Settings },
