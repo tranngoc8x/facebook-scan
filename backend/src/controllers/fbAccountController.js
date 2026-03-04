@@ -400,3 +400,101 @@ exports.browserLogin = async (req, res) => {
     res.status(500).send("Error: " + err.message);
   }
 };
+
+/**
+ * POST /api/fb-accounts/:id/interactive-login
+ * Dang nhap tuong tac qua Playwright, ho tro 2FA
+ */
+exports.interactiveLogin = async (req, res) => {
+  try {
+    const account = await FacebookAccount.findById(req.params.id);
+    if (!account) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Khong tim thay tai khoan" });
+    }
+
+    if (!account.password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Tai khoan chua co password" });
+    }
+
+    const result = await facebookAuth.interactiveLogin({
+      email: account.email,
+      password: account.password,
+    });
+
+    if (result.success) {
+      // Luu cookies vao account
+      account.status = "connected";
+      account.cookies = result.cookies;
+      account.error = null;
+      account.lastLoginAt = new Date();
+      if (result.userName) account.name = result.userName;
+      await account.save();
+    } else if (result.requiresTwoFactor) {
+      // Tra ve sessionId de client gui ma 2FA
+      account.status = "2fa_pending";
+      account.error = null;
+      await account.save();
+    }
+
+    res.json({
+      success: result.success,
+      message: result.message,
+      error: result.error,
+      requiresTwoFactor: result.requiresTwoFactor || false,
+      sessionId: result.sessionId || null,
+      data: account.toSafeJSON(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * POST /api/fb-accounts/:id/submit-2fa
+ * Gui ma 2FA vao phien Playwright
+ */
+exports.submit2FA = async (req, res) => {
+  try {
+    const { sessionId, code } = req.body;
+    if (!sessionId || !code) {
+      return res
+        .status(400)
+        .json({ success: false, message: "sessionId va code bat buoc" });
+    }
+
+    const account = await FacebookAccount.findById(req.params.id);
+    if (!account) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Khong tim thay tai khoan" });
+    }
+
+    const result = await facebookAuth.submit2FA(sessionId, code);
+
+    if (result.success) {
+      account.status = "connected";
+      account.cookies = result.cookies;
+      account.error = null;
+      account.lastLoginAt = new Date();
+      if (result.userName) account.name = result.userName;
+      await account.save();
+    } else {
+      account.status = "error";
+      account.error = result.error;
+      await account.save();
+    }
+
+    res.json({
+      success: result.success,
+      message: result.message,
+      error: result.error,
+      data: account.toSafeJSON(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
