@@ -11,94 +11,120 @@ const LOGIN_URL = "https://mbasic.facebook.com/login";
  * @returns {boolean} true neu auto-approve thanh cong
  */
 async function tryAutoApproveCheckpoint(page) {
+  const checkpointUrl = page.url();
   console.log("[FB Auth] Checkpoint detected, trying auto-approve...");
+  console.log("[FB Auth] Checkpoint URL:", checkpointUrl);
 
-  // Thu click cac nut approve tren checkpoint page
-  // mbasic thuong dung input[type="submit"] hoac button[type="submit"]
-  const approveSelectors = [
-    'input[type="submit"][value*="Continue"]',
-    'input[type="submit"][value*="continue"]',
-    'input[type="submit"][value*="Tiep tuc"]',
-    'input[type="submit"][value*="tiep tuc"]',
-    'input[type="submit"][value*="This was me"]',
-    'input[type="submit"][value*="Toi nhan ra"]',
-    'input[type="submit"][value*="Yes"]',
-    'input[type="submit"][value*="OK"]',
-    'input[type="submit"][value*="Submit"]',
-    'button[type="submit"]',
-    'input[type="submit"]',
-  ];
+  // Doi React render xong (www.facebook.com la SPA)
+  try {
+    await page.waitForLoadState("networkidle", { timeout: 10000 });
+  } catch {
+    // Timeout ok, tiep tuc
+  }
+  await page.waitForTimeout(3000);
 
-  for (const selector of approveSelectors) {
-    try {
-      const btn = page.locator(selector).first();
-      if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
-        // Kiem tra xem co phai form nhap OTP khong
-        // Neu co input text (OTP input) -> khong auto click, de user nhap
-        const otpInput = page.locator(
-          'input[name="approvals_code"], input[name="code"]',
-        );
-        const hasOtpInput = await otpInput
-          .isVisible({ timeout: 500 })
-          .catch(() => false);
+  // Debug log
+  try {
+    const bodyText = await page.locator("body").innerText();
+    console.log(
+      "[FB Auth] Checkpoint text (truncated):",
+      bodyText.substring(0, 500),
+    );
+  } catch {}
 
-        if (hasOtpInput) {
-          console.log(
-            "[FB Auth] OTP input found, skipping auto-approve (needs manual 2FA)",
-          );
-          return false;
-        }
-
-        const btnValue = await btn.getAttribute("value").catch(() => "submit");
-        console.log(`[FB Auth] Clicking approve button: "${btnValue}"`);
-        await btn.click();
-        await page.waitForTimeout(3000);
-
-        // Kiem tra URL sau khi click - co the co nhieu buoc checkpoint
-        let url = page.url();
-        // Thu click tiep neu van o checkpoint (co the co nhieu buoc)
-        for (let step = 0; step < 3; step++) {
-          if (
-            !url.includes("checkpoint") &&
-            !url.includes("two_step_verification")
-          ) {
-            console.log("[FB Auth] Auto-approve successful!");
-            return true;
-          }
-          // Tim nut submit tiep theo
-          const nextBtn = page.locator('input[type="submit"]').first();
-          if (await nextBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-            // Kiem tra OTP input o buoc nay
-            const otpCheck = page.locator(
-              'input[name="approvals_code"], input[name="code"]',
-            );
-            if (await otpCheck.isVisible({ timeout: 500 }).catch(() => false)) {
-              console.log("[FB Auth] OTP input found at step, need manual 2FA");
-              return false;
-            }
-            console.log(
-              `[FB Auth] Clicking next checkpoint button (step ${step + 1})`,
-            );
-            await nextBtn.click();
-            await page.waitForTimeout(3000);
-            url = page.url();
-          } else {
-            break;
-          }
-        }
-
-        // Check final URL
-        if (
-          !url.includes("checkpoint") &&
-          !url.includes("two_step_verification")
-        ) {
-          console.log("[FB Auth] Auto-approve successful after multi-step!");
-          return true;
-        }
-      }
-    } catch (e) {
-      // Ignore and try next selector
+  // Thu tu dong approve qua nhieu buoc (Facebook co the co 2-3 buoc)
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const url = page.url();
+    if (!url.includes("checkpoint") && !url.includes("two_step_verification")) {
+      console.log("[FB Auth] Auto-approve successful!");
+      return true;
     }
+
+    // Kiem tra OTP input - neu co thi can nhap thu cong
+    const otpSelectors = [
+      'input[name="approvals_code"]',
+      'input[name="code"]',
+      'input[type="text"][autocomplete="one-time-code"]',
+      'input[inputmode="numeric"]',
+    ];
+    for (const sel of otpSelectors) {
+      if (
+        await page
+          .locator(sel)
+          .isVisible({ timeout: 500 })
+          .catch(() => false)
+      ) {
+        console.log(`[FB Auth] OTP input found (${sel}), needs manual 2FA`);
+        return false;
+      }
+    }
+
+    // Tim nut approve - ca mbasic va www.facebook.com
+    const buttonSelectors = [
+      // mbasic selectors
+      'input[type="submit"]',
+      'button[type="submit"]',
+      // www.facebook.com React selectors - tim button/a/div[role=button] co text phu hop
+      'button:has-text("Continue")',
+      'button:has-text("Tiếp tục")',
+      'button:has-text("Tiep tuc")',
+      'button:has-text("This was me")',
+      'button:has-text("Yes")',
+      'button:has-text("Đây là tôi")',
+      'button:has-text("OK")',
+      'button:has-text("Submit")',
+      'button:has-text("Gửi")',
+      '[role="button"]:has-text("Continue")',
+      '[role="button"]:has-text("Tiếp tục")',
+      '[role="button"]:has-text("This was me")',
+      '[role="button"]:has-text("Yes")',
+      '[role="button"]:has-text("Đây là tôi")',
+      '[role="button"]:has-text("OK")',
+      // Fallback: any visible button
+      "button[data-testid]",
+    ];
+
+    let clicked = false;
+    for (const selector of buttonSelectors) {
+      try {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const btnText = await btn.innerText().catch(() => "");
+          console.log(
+            `[FB Auth] Found button: "${btnText}" (${selector}), clicking...`,
+          );
+          await btn.click();
+          clicked = true;
+          await page.waitForTimeout(3000);
+
+          // Doi React render lai
+          try {
+            await page.waitForLoadState("networkidle", { timeout: 5000 });
+          } catch {}
+
+          break;
+        }
+      } catch {
+        // Skip selector
+      }
+    }
+
+    if (!clicked) {
+      console.log(
+        `[FB Auth] No approve button found at attempt ${attempt + 1}`,
+      );
+      break;
+    }
+  }
+
+  // Check URL cuoi cung
+  const finalUrl = page.url();
+  if (
+    !finalUrl.includes("checkpoint") &&
+    !finalUrl.includes("two_step_verification")
+  ) {
+    console.log("[FB Auth] Auto-approve successful after clicks!");
+    return true;
   }
 
   // Fallback: doi them 5s xem co tu redirect khong
@@ -366,19 +392,56 @@ function parseCookieString(cookieStr) {
     });
 }
 
-// Luu tru cac phien dang cho 2FA (key: sessionId -> { page, timeout })
-const pendingSessions = new Map();
+// Luu tru trang thai login tuong tac (key: accountId -> { status, cookies, userName, error })
+const loginSessions = new Map();
 
 /**
- * Dang nhap tuong tac - giu page mo khi gap 2FA
- * Tra ve sessionId de client gui ma 2FA sau
+ * Lay trang thai login tuong tac cua account
  */
-async function interactiveLogin({ email, password }) {
-  const page = await pw.getPage();
+function getLoginStatus(accountId) {
+  return loginSessions.get(accountId) || null;
+}
+
+/**
+ * Xoa trang thai login sau khi da doc
+ */
+function clearLoginStatus(accountId) {
+  loginSessions.delete(accountId);
+}
+
+/**
+ * Dang nhap tuong tac - dung headed browser (VNC mode)
+ * Start login trong background, tra ve ngay
+ * Frontend poll getLoginStatus() de kiem tra ket qua
+ */
+async function interactiveLogin({ email, password, accountId }) {
+  // Dat status = pending ngay
+  loginSessions.set(accountId, { status: "pending" });
+
+  // Chay login trong background (khong await)
+  _runInteractiveLogin({ email, password, accountId }).catch((err) => {
+    console.error("[FB Auth] Background login error:", err.message);
+    loginSessions.set(accountId, {
+      status: "error",
+      error: `Loi dang nhap: ${err.message}`,
+    });
+  });
+
+  return { started: true };
+}
+
+/**
+ * Background process: mo headed browser, nhap credentials, poll URL
+ */
+async function _runInteractiveLogin({ email, password, accountId }) {
+  let page;
 
   try {
-    console.log("[FB Auth] Interactive login...");
-    await page.goto(LOGIN_URL, {
+    console.log("[FB Auth] Interactive login (headed/VNC mode)...");
+
+    page = await pw.getHeadedPage();
+
+    await page.goto("https://www.facebook.com/login", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
@@ -391,121 +454,93 @@ async function interactiveLogin({ email, password }) {
       !url.includes("checkpoint") &&
       (url.includes("facebook.com/home") || url.includes("facebook.com/?"))
     ) {
-      await pw.saveCookies();
-      const cookies = await pw.getCookiesJSON();
-      await page.close();
-      return {
-        success: true,
-        message: "Da dang nhap roi",
+      await pw.saveHeadedCookies();
+      const cookies = await pw.getHeadedCookiesJSON();
+      await pw.closeHeadedBrowser();
+      loginSessions.set(accountId, {
+        status: "success",
         cookies,
         userName: "Facebook User",
-      };
+      });
+      return;
     }
 
     // Nhap email + password
-    const emailInput = page.locator(
-      'input[name="email"], input[id="m_login_email"]',
-    );
-    await emailInput.fill(email);
-    await page.waitForTimeout(500);
+    const emailInput = page.locator('input[name="email"]');
+    if (await emailInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await emailInput.fill(email);
+      await page.waitForTimeout(500);
 
-    const passInput = page.locator(
-      'input[name="pass"], input[id="m_login_password"]',
-    );
-    await passInput.fill(password);
-    await page.waitForTimeout(500);
+      const passInput = page.locator('input[name="pass"]');
+      await passInput.fill(password);
+      await page.waitForTimeout(500);
 
-    await passInput.press("Enter");
-    await page.waitForTimeout(5000);
+      const loginBtn = page.locator(
+        'button[name="login"], button[type="submit"], #loginbutton',
+      );
+      if (await loginBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await loginBtn.click();
+      } else {
+        await passInput.press("Enter");
+      }
+    }
 
-    const currentUrl = page.url();
+    // Poll URL moi 2s (toi da 5 phut)
+    console.log("[FB Auth] Waiting for user to complete login via VNC...");
+    const maxWaitMs = 5 * 60 * 1000;
+    const startTime = Date.now();
 
-    // 2FA / checkpoint detected
-    if (
-      currentUrl.includes("checkpoint") ||
-      currentUrl.includes("two_step_verification")
-    ) {
-      const autoApproved = await tryAutoApproveCheckpoint(page);
+    while (Date.now() - startTime < maxWaitMs) {
+      await page.waitForTimeout(2000);
 
-      if (autoApproved) {
-        await pw.saveCookies();
-        const cookies = await pw.getCookiesJSON();
-        const userName = await getProfileName(page);
-        console.log(`[FB Auth] Login successful after auto-2FA: ${userName}`);
-        await page.close();
-        return {
-          success: true,
-          message: "Dang nhap thanh cong",
-          cookies,
-          userName,
-        };
+      let currentUrl;
+      try {
+        currentUrl = page.url();
+      } catch {
+        break;
       }
 
-      // Van con checkpoint -> can nhap ma 2FA thu cong
-      const sessionId =
-        Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      if (
+        !currentUrl.includes("login") &&
+        !currentUrl.includes("checkpoint") &&
+        !currentUrl.includes("two_step_verification") &&
+        !currentUrl.includes("recover") &&
+        (currentUrl.includes("facebook.com") || currentUrl.includes("fb.com"))
+      ) {
+        console.log("[FB Auth] Login successful via VNC!");
+        await pw.saveHeadedCookies();
+        const cookies = await pw.getHeadedCookiesJSON();
+        const userName = await getProfileName(page).catch(
+          () => "Facebook User",
+        );
+        console.log(`[FB Auth] Logged in as: ${userName}`);
 
-      const timeoutId = setTimeout(
-        () => {
-          const session = pendingSessions.get(sessionId);
-          if (session) {
-            console.log(`[FB Auth] 2FA session ${sessionId} expired`);
-            session.page.close().catch(() => {});
-            pendingSessions.delete(sessionId);
-          }
-        },
-        5 * 60 * 1000,
-      );
-
-      pendingSessions.set(sessionId, { page, timeout: timeoutId });
-
-      console.log(`[FB Auth] 2FA required, session: ${sessionId}`);
-      return {
-        success: false,
-        requiresTwoFactor: true,
-        sessionId,
-        message: "Nhap ma xac thuc 2 buoc (2FA)",
-      };
+        await pw.closeHeadedBrowser();
+        loginSessions.set(accountId, {
+          status: "success",
+          cookies,
+          userName,
+        });
+        return;
+      }
     }
 
-    // Loi login
-    const errorEl = page.locator("#error_box, ._9ay7");
-    if (await errorEl.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const errorText = await errorEl.textContent();
-      await page.close();
-      return { success: false, error: `Dang nhap that bai: ${errorText}` };
-    }
-
-    // Login thanh cong (khong co 2FA)
-    if (
-      !currentUrl.includes("login") ||
-      currentUrl === FB_URL + "/" ||
-      currentUrl.includes("facebook.com/?")
-    ) {
-      await pw.saveCookies();
-      const cookies = await pw.getCookiesJSON();
-      const userName = await getProfileName(page);
-      console.log(`[FB Auth] Login successful: ${userName}`);
-      await page.close();
-      return {
-        success: true,
-        message: "Dang nhap thanh cong",
-        cookies,
-        userName,
-      };
-    }
-
-    await page.close();
-    return {
-      success: false,
-      error: `Trang thai khong xac dinh. URL: ${currentUrl}`,
-    };
+    // Timeout
+    console.log("[FB Auth] Interactive login timeout (5 min)");
+    await pw.closeHeadedBrowser();
+    loginSessions.set(accountId, {
+      status: "error",
+      error: "Het thoi gian cho (5 phut). Vui long thu lai.",
+    });
   } catch (err) {
     console.error("[FB Auth] Interactive login error:", err.message);
     try {
-      await page.close();
+      await pw.closeHeadedBrowser();
     } catch {}
-    return { success: false, error: `Loi dang nhap: ${err.message}` };
+    loginSessions.set(accountId, {
+      status: "error",
+      error: `Loi dang nhap: ${err.message}`,
+    });
   }
 }
 
@@ -616,6 +651,8 @@ async function submit2FA(sessionId, code) {
 module.exports = {
   login,
   interactiveLogin,
+  getLoginStatus,
+  clearLoginStatus,
   submit2FA,
   loginWithCookies,
   checkSession,

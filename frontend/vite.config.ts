@@ -17,6 +17,7 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_API_TARGET || "http://localhost:4000",
         changeOrigin: true,
+        timeout: 360000, // 6 phut - cho interactive login (5 phut max)
       },
     },
   },

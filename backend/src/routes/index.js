@@ -31,6 +31,7 @@ router.post(
   "/fb-accounts/:id/interactive-login",
   fbAccountController.interactiveLogin,
 );
+router.get("/fb-accounts/:id/login-status", fbAccountController.loginStatus);
 router.post("/fb-accounts/:id/submit-2fa", fbAccountController.submit2FA);
 
 // Scan

@@ -61,10 +61,7 @@ export default function FbAccountsPage() {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showCookieDialog, setShowCookieDialog] = useState<string | null>(null);
-    const [show2FADialog, setShow2FADialog] = useState<string | null>(null);
-    const [twoFACode, setTwoFACode] = useState("");
-    const [twoFASessionId, setTwoFASessionId] = useState<string | null>(null);
-    const [twoFALoading, setTwoFALoading] = useState(false);
+    const [showVNCDialog, setShowVNCDialog] = useState(false);
     const [form, setForm] = useState({ email: "", password: "" });
     const [cookieText, setCookieText] = useState("");
 
@@ -121,57 +118,62 @@ export default function FbAccountsPage() {
 
     const handleInteractiveLogin = async (accountId: string) => {
         setActionLoading(`ilogin-${accountId}`);
+        setShowVNCDialog(true);
+
+        // Mo noVNC trong tab moi
+        const vncUrl = `${window.location.protocol}//${window.location.hostname}:6080/vnc.html?autoconnect=true&resize=scale`;
+        const vncWindow = window.open(vncUrl, "noVNC", "width=1300,height=850");
+
         try {
-            const res = await fetch(`/api/fb-accounts/${accountId}/interactive-login`, {
+            // Start login (tra ve ngay, chay background)
+            const startRes = await fetch(`/api/fb-accounts/${accountId}/interactive-login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
             });
-            const data = await res.json();
+            const startData = await startRes.json();
 
-            if (data.success) {
-                fetchAccounts();
-            } else if (data.requiresTwoFactor && data.sessionId) {
-                setTwoFASessionId(data.sessionId);
-                setShow2FADialog(accountId);
-                setTwoFACode("");
-            } else {
-                alert(data.error || data.message || "Dang nhap that bai");
-                fetchAccounts();
+            if (!startData.success) {
+                alert(startData.message || "Khong the bat dau dang nhap");
+                return;
+            }
+
+            // Poll status moi 2s (toi da 5 phut)
+            const maxPollMs = 5 * 60 * 1000;
+            const pollStart = Date.now();
+
+            while (Date.now() - pollStart < maxPollMs) {
+                await new Promise((r) => setTimeout(r, 2000));
+
+                const statusRes = await fetch(`/api/fb-accounts/${accountId}/login-status`);
+                const statusData = await statusRes.json();
+
+                if (statusData.status === "success") {
+                    alert("Dang nhap thanh cong!");
+                    fetchAccounts();
+                    break;
+                }
+
+                if (statusData.status === "error") {
+                    alert(statusData.message || "Dang nhap that bai");
+                    fetchAccounts();
+                    break;
+                }
+
+                // status === "pending" -> tiep tuc poll
             }
         } catch (err) {
             console.error(err);
             alert("Loi ket noi server");
         } finally {
             setActionLoading(null);
-        }
-    };
-
-    const handleSubmit2FA = async () => {
-        if (!show2FADialog || !twoFASessionId || !twoFACode.trim()) return;
-        setTwoFALoading(true);
-        try {
-            const res = await fetch(`/api/fb-accounts/${show2FADialog}/submit-2fa`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId: twoFASessionId, code: twoFACode.trim() }),
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                setShow2FADialog(null);
-                setTwoFASessionId(null);
-                setTwoFACode("");
-                fetchAccounts();
-            } else {
-                alert(data.error || "Ma 2FA khong dung");
+            setShowVNCDialog(false);
+            if (vncWindow && !vncWindow.closed) {
+                vncWindow.close();
             }
-        } catch (err) {
-            console.error(err);
-            alert("Loi ket noi server");
-        } finally {
-            setTwoFALoading(false);
         }
     };
+
+
 
     const statusBadge = (account: FbAccount) => {
         if (account.status === "active" && account.hasCookies) {
@@ -559,64 +561,37 @@ export default function FbAccountsPage() {
                     </Card>
                 )}
 
-                {/* 2FA Dialog */}
+                {/* VNC Login Status Dialog */}
                 <Dialog
-                    open={!!show2FADialog}
+                    open={showVNCDialog}
                     onOpenChange={(open) => {
-                        if (!open) {
-                            setShow2FADialog(null);
-                            setTwoFASessionId(null);
-                            setTwoFACode("");
-                        }
+                        if (!open) setShowVNCDialog(false);
                     }}
                 >
                     <DialogContent className="sm:max-w-md">
                         <DialogHeader>
-                            <DialogTitle>Xac thuc 2 buoc (2FA)</DialogTitle>
+                            <DialogTitle>Dang nhap qua Browser</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4">
-                            <p className="text-sm text-muted-foreground">
-                                Facebook yeu cau ma xac thuc. Nhap ma tu ung dung xac thuc
-                                (Google Authenticator, Authy, ...) hoac SMS.
-                            </p>
-                            <div className="space-y-2">
-                                <Label htmlFor="2fa-code">Ma xac thuc</Label>
-                                <Input
-                                    id="2fa-code"
-                                    placeholder="Nhap ma 6 so"
-                                    value={twoFACode}
-                                    onChange={(e) => setTwoFACode(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") handleSubmit2FA();
-                                    }}
-                                    maxLength={8}
-                                    autoFocus
-                                />
+                            <div className="flex items-center gap-3">
+                                <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+                                <p className="text-sm text-muted-foreground">
+                                    Trinh duyet da duoc mo trong cua so moi. Hay hoan tat dang nhap
+                                    (giai CAPTCHA, nhap ma 2FA neu can) trong trinh duyet do.
+                                </p>
                             </div>
-                            <div className="flex gap-2 justify-end">
+                            <p className="text-xs text-muted-foreground">
+                                He thong se tu dong phat hien khi ban dang nhap thanh cong.
+                                Thoi gian cho toi da: 5 phut.
+                            </p>
+                            <div className="flex justify-end">
                                 <Button
                                     variant="outline"
-                                    onClick={() => {
-                                        setShow2FADialog(null);
-                                        setTwoFASessionId(null);
-                                        setTwoFACode("");
-                                    }}
+                                    onClick={() => setShowVNCDialog(false)}
                                 >
                                     Huy
                                 </Button>
-                                <Button
-                                    onClick={handleSubmit2FA}
-                                    disabled={!twoFACode.trim() || twoFALoading}
-                                >
-                                    {twoFALoading ? (
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    ) : null}
-                                    Xac nhan
-                                </Button>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Phien xac thuc se het han sau 5 phut.
-                            </p>
                         </div>
                     </DialogContent>
                 </Dialog>

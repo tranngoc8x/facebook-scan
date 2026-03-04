@@ -403,7 +403,8 @@ exports.browserLogin = async (req, res) => {
 
 /**
  * POST /api/fb-accounts/:id/interactive-login
- * Dang nhap tuong tac qua Playwright, ho tro 2FA
+ * Start login tuong tac qua headed browser (VNC)
+ * Tra ve ngay - frontend poll /login-status de kiem tra ket qua
  */
 exports.interactiveLogin = async (req, res) => {
   try {
@@ -420,34 +421,66 @@ exports.interactiveLogin = async (req, res) => {
         .json({ success: false, message: "Tai khoan chua co password" });
     }
 
-    const result = await facebookAuth.interactiveLogin({
+    // Start login background - tra ve ngay
+    await facebookAuth.interactiveLogin({
       email: account.email,
       password: account.getPassword(),
+      accountId: account._id.toString(),
     });
-    if (result.success) {
-      // Luu cookies vao account
-      account.status = "active";
-      account.cookies = result.cookies;
-      account.error = null;
-      account.lastLoginAt = new Date();
-      if (result.userName) account.name = result.userName;
-      await account.save();
-    } else if (result.requiresTwoFactor) {
-      // Giu nguyen status, cho user nhap 2FA
-      account.error = "Dang cho ma xac thuc 2FA";
-      await account.save();
-    }
 
     res.json({
-      success: result.success,
-      message: result.message,
-      error: result.error,
-      requiresTwoFactor: result.requiresTwoFactor || false,
-      sessionId: result.sessionId || null,
-      data: account.toSafeJSON(),
+      success: true,
+      message: "Dang mo browser... Vui long hoan tat dang nhap qua VNC.",
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * GET /api/fb-accounts/:id/login-status
+ * Poll trang thai login tuong tac
+ */
+exports.loginStatus = async (req, res) => {
+  try {
+    const accountId = req.params.id;
+    const status = facebookAuth.getLoginStatus(accountId);
+
+    if (!status) {
+      return res.json({ status: "idle" });
+    }
+
+    if (status.status === "success") {
+      // Luu cookies vao account
+      const account = await FacebookAccount.findById(accountId);
+      if (account) {
+        account.status = "active";
+        account.cookies = status.cookies;
+        account.error = null;
+        account.lastLoginAt = new Date();
+        if (status.userName) account.name = status.userName;
+        await account.save();
+      }
+      facebookAuth.clearLoginStatus(accountId);
+      return res.json({
+        status: "success",
+        message: "Dang nhap thanh cong!",
+        data: account ? account.toSafeJSON() : null,
+      });
+    }
+
+    if (status.status === "error") {
+      facebookAuth.clearLoginStatus(accountId);
+      return res.json({
+        status: "error",
+        message: status.error,
+      });
+    }
+
+    // pending
+    res.json({ status: "pending" });
+  } catch (err) {
+    res.status(500).json({ status: "error", message: err.message });
   }
 };
 
